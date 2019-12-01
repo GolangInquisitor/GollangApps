@@ -23,7 +23,6 @@ func CreateReadHandle() mtcpserver.ReadHandler {
 		} else {
 			fmt.Println("Num Conn: ", sock.ConnTag, " Error: ", errorop)
 		}
-
 	}
 }
 func CreateWriteHandle() mtcpserver.WriteHandler {
@@ -35,7 +34,6 @@ func CreateWriteHandle() mtcpserver.WriteHandler {
 		}
 	}
 }
-
 var MyTCPServer = mtcpserver.NewTcpWorker(new(mtcpserver.RTCPhelper))
 
 func main() {
@@ -45,5 +43,4 @@ func main() {
 	MyTCPServer.SetWriteBufSize(1024)
 	fmt.Println("Start Listen Port")
 	MyTCPServer.Start(":1179", CreateReadHandle())
-
 }
