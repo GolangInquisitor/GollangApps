@@ -1,7 +1,6 @@
 # GollangApps
 сервер TCP
 example
-
 package main
 
 import (
@@ -11,15 +10,12 @@ import (
 )
 
 type Errhandle struct{}
-
 func (e *Errhandle) CreateError(conn *net.Conn, ConnTag int, err error) {
 	fmt.Println("Error Op", err)
 	(*conn).Close()
-
 }
 func CreateReadHandle() mtcpserver.ReadHandler {
 	return func(sock mtcpserver.ConectItem, buf []byte, size int, errorop error) {
-
 		if errorop == nil {
 			fmt.Println("Num Conn: ", sock.ConnTag, " ReceivedData: ", string(buf))
 			ready := "READY"
