@@ -15,6 +15,8 @@ var (
 	ErrNullByteRead = errors.New("Connection Null byte read")
 	ErrEmtyConn     = errors.New("Attemt send to empty conn")
 	ErrOverSizeBuf  = errors.New("Buffer Oversize")
+	ErrRemoveByTag  = errors.New("Error remove connection by Tag")
+	ErrRemoveByIndx = errors.New("Error remove connection by Index")
 )
 
 type RNetError = interface {
@@ -44,8 +46,7 @@ func (list *NetList) SetNumConnections(numconn int) error {
 	return nil
 }
 func (list *NetList) AddConnection(sock net.Conn) (ConectItem, error) {
-	var l = len(list.connList)
-	if list.numActiveConn >= l /* len(list.connList)*/ {
+	if list.numActiveConn >= len(list.connList) {
 		return *new(ConectItem), ErrFullConList
 	}
 	for key, _ := range list.connList {
@@ -83,7 +84,7 @@ func (list *NetList) RemoveConnByConTag(contag int) error {
 			return cl.Close()
 		}
 	}
-	return errors.New("Error remove connection by Tag")
+	return ErrRemoveByTag
 }
 func (list *NetList) RemoveConnByIndex(index int) error {
 	for key, value := range list.connList {
@@ -97,7 +98,7 @@ func (list *NetList) RemoveConnByIndex(index int) error {
 			return cl.Close()
 		}
 	}
-	return errors.New("Error remove connection by Index")
+	return ErrRemoveByIndx
 }
 
 type ReadHandler func(sock ConectItem, buf []byte, size int, errorop error)
@@ -204,7 +205,6 @@ func (serv *RTCPhelper) read(conn ConectItem, readfunc ReadHandler) {
 		if n == 0 {
 			err = ErrNullByteRead
 		} else {
-			//fmt.Println("NewData ;" + string(input))
 			go readfunc(conn, input, n, err)
 		}
 	}
@@ -250,83 +250,3 @@ func (serv *RTCPhelper) SetErrorHandler(errhandler RNetError) {
 func (serv *RTCPhelper) SetNumConnections(numcon int) {
 	serv.ConectionList.SetNumConnections(numcon)
 }
-
-/*func R_StartListener(port string, lsnrhandlr RServTCP) error {
-	listener, err := net.Listen("tcp", port)
-
-	if err != nil {
-		return err
-	}
-	for {
-		conn, err := listener.Accept()
-		lsnrhandlr.ListenHandler(conn, err)
-
-	}
-	defer listener.Close()
-	return err
-}
-func R_Read(conect ConectItem, lsnrhandlr RServTCP) error {
-	return lsnrhandlr.ReadHandler(conect, lsnrhandlr.ReadFunc)
-
-}
-
-type TCP_Server struct {
-	tcp_conections NetList
-}
-
-func (mServer *TCP_Server) ListenHandler(sock net.Conn, err error) {
-	if !mServer.ErrorHandler(sock, err) {
-		err := mServer.tcp_conections.AddConnection(&sock)
-		if err != nil {
-
-		}
-	}
-
-}
-func (mServer *TCP_Server) ReadFunc(sock ConectItem, buf []byte, errorop error) {
-
-}
-func (mServer *TCP_Server) ReadHandler(conect ConectItem, readerfunc ReaderHandler) error {
-
-}
-
-func (mServer *TCP_Server) ErrorHandler(sock net.Conn, err error) bool {
-	if err != nil {
-		log.Println("SockADDR :" + sock.RemoteAddr().String() + "ListenHandler errr:" + err.Error())
-		return true
-	}
-	return false
-}
-
-var RTcp_Server TCP_Server
-
-/*func (mServer *TCP_Server) StartListener(port string) (res error) {
-	listener, err := net.Listen("tcp", port)
-	if err != nil {
-		return err
-	}
-	defer listener.Close()
-	for {
-		conn, err := listener.Accept()
-		if err != nil {
-			log.Printf("error accepting connection %v", err)
-			continue
-		}
-		log.Printf("accepted connection from %v", conn.RemoteAddr())
-
-	}
-	return nil
-}
-func (mServer *TCP_Server) readConnReadEventHandler(conn net.Conn) {
-	defer conn.Close()
-	var CanWork bool = true
-	r := bufio.NewReader(conn)
-	scanr := bufio.NewScanner(r)
-	for CanWork {
-		conn.Read()
-	}
-}
-
-func (mServer *TCP_Server) SetupReaderHandler(readerFunc ReaderHandler) {
-	mServer.readFunc = readerFunc
-}*/
