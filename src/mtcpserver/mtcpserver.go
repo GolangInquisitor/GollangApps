@@ -15,8 +15,8 @@ var (
 	ErrNullByteRead = errors.New("Connection Null byte read")
 	ErrEmtyConn     = errors.New("Attemt send to empty conn")
 	ErrOverSizeBuf  = errors.New("Buffer Oversize")
-	ErrRemoveByTag  = errors.New("Error remove connection by. Tag Not Find Conection")
-	ErrRemoveByIndx = errors.New("Error remove connection by Index")
+	ErrRemoveByTag  = errors.New("Error remove connection by Tag Not Found Conection")
+	ErrRemoveByIndx = errors.New("Error remove connection by Index Not Found Conection")
 )
 
 type RNetError = interface {
@@ -122,6 +122,8 @@ type RListenTCP interface {
 	SetReadDeadLine(rdtime time.Duration)
 	SetWriteDeadLine(wrtime time.Duration)
 	CloseConnections()
+	Stop()
+	CanWork() bool
 }
 
 func NewTcpWorker(worker RListenTCP) NET_TCPWorker {
@@ -130,7 +132,6 @@ func NewTcpWorker(worker RListenTCP) NET_TCPWorker {
 
 type NET_TCPWorker struct {
 	tcpserver RListenTCP
-	stop      bool
 }
 
 func (tserver *NET_TCPWorker) ReadBufSize() int {
@@ -158,25 +159,19 @@ func (tserver *NET_TCPWorker) SetWriteDeadLine(wrtime time.Duration) {
 	tserver.tcpserver.SetWriteDeadLine(wrtime)
 }
 func (tserver *NET_TCPWorker) Stop() {
-	tserver.stop = true
+	tserver.tcpserver.Stop()
 }
 func (tserver *NET_TCPWorker) Start(port string, readfunc ReadHandler) error {
-	tserver.stop = false
 	a, err := net.ResolveTCPAddr("tcp", port)
 	if err != nil {
 		return err
 	}
 	listener, err := net.ListenTCP("tcp", a)
-
-	/*
-
-	 */
-
 	defer listener.Close()
 	if err != nil {
 		return err
 	}
-	for !tserver.stop {
+	for !tserver.tcpserver.CanWork() {
 		listener.SetDeadline(time.Now().Add(time.Second * 10))
 		conn, err := listener.Accept()
 		if err != nil {
@@ -221,7 +216,6 @@ func (serv *RTCPhelper) ListenHandler(sock net.Conn, readfunc ReadHandler, err e
 	}
 }
 func (serv *RTCPhelper) read(conn ConectItem, readfunc ReadHandler) {
-	defer conn.Connection.Close()
 	input := make([]byte, serv.readbufsize)
 	if conn.Empty {
 		fmt.Println("empty")
@@ -231,12 +225,11 @@ func (serv *RTCPhelper) read(conn ConectItem, readfunc ReadHandler) {
 			go serv.ErrHandler.CreateError(&conn.Connection, 0, res)
 			return
 		}
-		n, err := conn.Connection.Read(input)
-		if n == 0 {
-			err = ErrNullByteRead
-		} else {
+		for !serv.stop {
+			n, err := conn.Connection.Read(input)
 			go readfunc(conn, input, n, err)
 		}
+
 	}
 	return
 }
@@ -287,10 +280,20 @@ func (serv *RTCPhelper) SetNumConnections(numcon int) {
 func (serv *RTCPhelper) CloseConnections() {
 	serv.ConectionList.CloseAll()
 }
+func (serv *RTCPhelper) Stop() {
+	serv.stop = true
+}
+func (serv *RTCPhelper) CanWork() bool {
+	return serv.stop
+}
 func (serv *RTCPhelper) CloseConectionByTag(Tag int) {
 	if err := serv.ConectionList.RemoveConnByConTag(Tag); err != nil {
 		c := serv.ConectionList.GetConnetionByTag(Tag).Connection
-		serv.ErrHandler.CreateError(&c, Tag, err)
+		go serv.ErrHandler.CreateError(&c, Tag, err)
 	}
 	return
+}
+func GetErrOp(err error) net.OpError {
+	errop := err.(*net.OpError)
+	return *errop
 }
