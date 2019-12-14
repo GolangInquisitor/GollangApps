@@ -22,6 +22,7 @@ var (
 type RNetError = interface {
 	CreateError(conn *net.Conn, ConnTag int, err error)
 }
+
 type ConectItem struct {
 	ConnTag    int
 	Empty      bool
@@ -123,6 +124,7 @@ type RListenTCP interface {
 	SetWriteDeadLine(wrtime time.Duration)
 	CloseConnections()
 	Stop()
+	Start()
 	CanWork() bool
 }
 
@@ -166,17 +168,17 @@ func (tserver *NET_TCPWorker) Start(port string, readfunc ReadHandler) error {
 	if err != nil {
 		return err
 	}
+
 	listener, err := net.ListenTCP("tcp", a)
 	defer listener.Close()
 	if err != nil {
 		return err
 	}
-	for !tserver.tcpserver.CanWork() {
+	tserver.tcpserver.Start()
+	for tserver.tcpserver.CanWork() {
 		listener.SetDeadline(time.Now().Add(time.Second * 10))
 		conn, err := listener.Accept()
-		if err != nil {
-			tserver.tcpserver.ListenHandler(conn, readfunc, err)
-		}
+		tserver.tcpserver.ListenHandler(conn, readfunc, err)
 
 	}
 	tserver.tcpserver.CloseConnections()
@@ -283,8 +285,11 @@ func (serv *RTCPhelper) CloseConnections() {
 func (serv *RTCPhelper) Stop() {
 	serv.stop = true
 }
+func (serv *RTCPhelper) Start() {
+	serv.stop = false
+}
 func (serv *RTCPhelper) CanWork() bool {
-	return serv.stop
+	return !serv.stop
 }
 func (serv *RTCPhelper) CloseConectionByTag(Tag int) {
 	if err := serv.ConectionList.RemoveConnByConTag(Tag); err != nil {
