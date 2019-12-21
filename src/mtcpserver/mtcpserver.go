@@ -74,12 +74,14 @@ func (list *NetList) GetConnetionByTag(tag int) ConectItem {
 	return ConectItem{Empty: true, ConnTag: -1, Connection: nil}
 }
 func (list *NetList) RemoveConnByConTag(contag int) error {
-	for _, value := range list.connList {
+	for key, value := range list.connList {
 		if value.ConnTag == contag {
 			list.lock.Lock()
 			defer list.lock.Unlock()
-			value.ConnTag = 0
-			value.Empty = true
+			list.connList[key].ConnTag = 0
+			list.connList[key].Empty = true
+			/*value.ConnTag = 0
+			value.Empty = true*/
 			list.numActiveConn--
 			cl := value.Connection
 			return cl.Close()
@@ -163,6 +165,9 @@ func (tserver *NET_TCPWorker) SetWriteDeadLine(wrtime time.Duration) {
 func (tserver *NET_TCPWorker) Stop() {
 	tserver.tcpserver.Stop()
 }
+func (tserver *NET_TCPWorker) CloseConnectionByTag(tag int) {
+	tserver.tcpserver.CloseConectionByTag(tag)
+}
 func (tserver *NET_TCPWorker) Start(port string, readfunc ReadHandler) error {
 	a, err := net.ResolveTCPAddr("tcp", port)
 	if err != nil {
@@ -211,7 +216,7 @@ func (serv *RTCPhelper) ListenHandler(sock net.Conn, readfunc ReadHandler, err e
 			fmt.Println("New conect : " + sock.RemoteAddr().String())
 			go serv.read(citem, readfunc)
 		} else {
-			go serv.ErrHandler.CreateError(&sock, 0, err)
+			serv.ErrHandler.CreateError(&sock, 0, err)
 		}
 	} else {
 		fmt.Println("ErrHandler interface is nil")
@@ -222,15 +227,13 @@ func (serv *RTCPhelper) read(conn ConectItem, readfunc ReadHandler) {
 	if conn.Empty {
 		fmt.Println("empty")
 	}
-	for !conn.Empty {
+	for !conn.Empty && !serv.stop {
 		if res := conn.Connection.SetReadDeadline(time.Now().Add(time.Second * serv.readtimeout)); res != nil {
-			go serv.ErrHandler.CreateError(&conn.Connection, 0, res)
+			serv.ErrHandler.CreateError(&conn.Connection, 0, res)
 			return
 		}
-		for !serv.stop {
-			n, err := conn.Connection.Read(input)
-			go readfunc(conn, input, n, err)
-		}
+		n, err := conn.Connection.Read(input)
+		readfunc(conn, input, n, err)
 
 	}
 	return
@@ -261,7 +264,7 @@ func (serv *RTCPhelper) Write(ConTag int, writefunc WriteHandler, byte_buf []byt
 		sock = serv.ConectionList.GetConnetionByTag(ConTag)
 		if !sock.Empty {
 			if res = sock.Connection.SetWriteDeadline(time.Now().Add(time.Second * serv.writetimeout)); res != nil {
-				go serv.ErrHandler.CreateError(&sock.Connection, 0, res)
+				serv.ErrHandler.CreateError(&sock.Connection, 0, res)
 				return
 			}
 			sendedlen, res = sock.Connection.Write(byte_buf)
