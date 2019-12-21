@@ -74,38 +74,36 @@ func (list *NetList) GetConnetionByTag(tag int) ConectItem {
 	return ConectItem{Empty: true, ConnTag: -1, Connection: nil}
 }
 func (list *NetList) RemoveConnByConTag(contag int) error {
-	for key, value := range list.connList {
-		if value.ConnTag == contag {
+	for key, _ := range list.connList {
+		if list.connList[key].ConnTag == contag {
 			list.lock.Lock()
 			defer list.lock.Unlock()
 			list.connList[key].ConnTag = 0
 			list.connList[key].Empty = true
-			/*value.ConnTag = 0
-			value.Empty = true*/
 			list.numActiveConn--
-			cl := value.Connection
-			return cl.Close()
+			return list.connList[key].Connection.Close()
 		}
 	}
 	return ErrRemoveByTag
 }
 func (list *NetList) RemoveConnByIndex(index int) error {
-	for key, value := range list.connList {
+	for key, _ := range list.connList {
 		if key == index {
 			list.lock.Lock()
 			defer list.lock.Unlock()
-			value.ConnTag = 0
-			value.Empty = true
+			list.connList[key].ConnTag = 0
+			list.connList[key].Empty = true
 			list.numActiveConn--
-			cl := value.Connection
-			return cl.Close()
+			return list.connList[key].Connection.Close()
 		}
 	}
 	return ErrRemoveByIndx
 }
 func (list *NetList) CloseAll() {
-	for _, value := range list.connList {
-		value.Connection.Close()
+	for key, _ := range list.connList {
+		list.connList[key].ConnTag = 0
+		list.connList[key].Empty = true
+		list.connList[key].Connection.Close()
 	}
 }
 
