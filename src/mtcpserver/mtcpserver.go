@@ -1,4 +1,3 @@
-// mtcpserver project mtcpserver.go
 package mtcpserver
 
 import (
@@ -20,7 +19,7 @@ var (
 )
 
 type RNetError = interface {
-	CreateError(conn *net.Conn, ConnTag int, err error)
+	CreateError(conn *net.Conn, ConnTag int, err error, ready_ch chan bool)
 }
 
 type ConectItem struct {
@@ -107,8 +106,8 @@ func (list *NetList) CloseAll() {
 	}
 }
 
-type ReadHandler func(sock ConectItem, buf []byte, size int, errorop error)
-type WriteHandler func(sock ConectItem, buf []byte, size int, errorop error)
+type ReadHandler func(sock ConectItem, buf []byte, size int, errorop error, done chan bool)
+type WriteHandler func(sock ConectItem, buf []byte, size int, errorop error, done chan bool)
 
 type RListenTCP interface {
 	ListenHandler(sock net.Conn, readfunc ReadHandler, err error)
@@ -116,10 +115,10 @@ type RListenTCP interface {
 	ReadBufSize() int
 	SetReadBufSize(size int)
 	SetWriteBufSize(size int)
-	Write(ConTag int, writefunc WriteHandler, byte_buf []byte)
+	Write(ConTag int, writefunc WriteHandler, byte_buf []byte, done chan bool)
 	SetErrorHandler(errhandler RNetError)
 	SetNumConnections(numcon int)
-	CloseConectionByTag(Tag int)
+	CloseConectionByTag(Tag int, done chan bool)
 	SetReadDeadLine(rdtime time.Duration)
 	SetWriteDeadLine(wrtime time.Duration)
 	CloseConnections()
@@ -163,8 +162,9 @@ func (tserver *NET_TCPWorker) SetWriteDeadLine(wrtime time.Duration) {
 func (tserver *NET_TCPWorker) Stop() {
 	tserver.tcpserver.Stop()
 }
-func (tserver *NET_TCPWorker) CloseConnectionByTag(tag int) {
-	tserver.tcpserver.CloseConectionByTag(tag)
+func (tserver *NET_TCPWorker) CloseConnectionByTag(tag int, done chan bool) {
+
+	tserver.tcpserver.CloseConectionByTag(tag, done)
 }
 func (tserver *NET_TCPWorker) Start(port string, readfunc ReadHandler) error {
 	a, err := net.ResolveTCPAddr("tcp", port)
@@ -187,8 +187,8 @@ func (tserver *NET_TCPWorker) Start(port string, readfunc ReadHandler) error {
 	tserver.tcpserver.CloseConnections()
 	return nil
 }
-func (tserver *NET_TCPWorker) Write(ConTag int, writefunc WriteHandler, byte_buf []byte) {
-	go tserver.tcpserver.Write(ConTag, writefunc, byte_buf)
+func (tserver *NET_TCPWorker) Write(ConTag int, writefunc WriteHandler, byte_buf []byte, done chan bool) {
+	go tserver.tcpserver.Write(ConTag, writefunc, byte_buf, done)
 }
 
 type RTCPhelper struct {
@@ -207,14 +207,18 @@ func (serv *RTCPhelper) ListenHandler(sock net.Conn, readfunc ReadHandler, err e
 		if err == nil {
 			var citem ConectItem
 			if citem, res = serv.ConectionList.AddConnection(sock); res != nil {
-				go serv.ErrHandler.CreateError(&sock, 0, res)
+				done := make(chan bool)
+				go serv.ErrHandler.CreateError(&sock, 0, res, done)
+				<-done
 				return
 			}
 
 			fmt.Println("New conect : " + sock.RemoteAddr().String())
 			go serv.read(citem, readfunc)
 		} else {
-			serv.ErrHandler.CreateError(&sock, 0, err)
+			done := make(chan bool)
+			go serv.ErrHandler.CreateError(&sock, 0, err, done)
+			<-done
 		}
 	} else {
 		fmt.Println("ErrHandler interface is nil")
@@ -225,14 +229,16 @@ func (serv *RTCPhelper) read(conn ConectItem, readfunc ReadHandler) {
 	if conn.Empty {
 		fmt.Println("empty")
 	}
+	done := make(chan bool)
 	for !conn.Empty && !serv.stop {
 		if res := conn.Connection.SetReadDeadline(time.Now().Add(time.Second * serv.readtimeout)); res != nil {
-			serv.ErrHandler.CreateError(&conn.Connection, 0, res)
-			return
+			go serv.ErrHandler.CreateError(&conn.Connection, 0, res, done)
+			<-done
+			continue
 		}
 		n, err := conn.Connection.Read(input)
-		readfunc(conn, input, n, err)
-
+		go readfunc(conn, input, n, err, done)
+		<-done
 	}
 	return
 }
@@ -254,15 +260,18 @@ func (serv *RTCPhelper) SetReadBufSize(size int) {
 func (serv *RTCPhelper) SetWriteBufSize(size int) {
 	serv.readbufsize = size
 }
-func (serv *RTCPhelper) Write(ConTag int, writefunc WriteHandler, byte_buf []byte) {
+func (serv *RTCPhelper) Write(ConTag int, writefunc WriteHandler, byte_buf []byte, done chan bool) {
 	var res error
 	var sendedlen int = 0
 	var sock ConectItem
+	ready := make(chan bool)
 	if serv.writebufsize >= len(byte_buf) {
 		sock = serv.ConectionList.GetConnetionByTag(ConTag)
 		if !sock.Empty {
 			if res = sock.Connection.SetWriteDeadline(time.Now().Add(time.Second * serv.writetimeout)); res != nil {
-				serv.ErrHandler.CreateError(&sock.Connection, 0, res)
+				//	done := make(chan bool)
+				go serv.ErrHandler.CreateError(&sock.Connection, 0, res, done)
+				<-done
 				return
 			}
 			sendedlen, res = sock.Connection.Write(byte_buf)
@@ -272,7 +281,9 @@ func (serv *RTCPhelper) Write(ConTag int, writefunc WriteHandler, byte_buf []byt
 	} else {
 		res = ErrOverSizeBuf
 	}
-	writefunc(sock, byte_buf, sendedlen, res)
+	go writefunc(sock, byte_buf, sendedlen, res, ready)
+	<-ready
+	done <- true
 }
 func (serv *RTCPhelper) SetErrorHandler(errhandler RNetError) {
 	serv.ErrHandler = errhandler
@@ -292,11 +303,16 @@ func (serv *RTCPhelper) Start() {
 func (serv *RTCPhelper) CanWork() bool {
 	return !serv.stop
 }
-func (serv *RTCPhelper) CloseConectionByTag(Tag int) {
+func (serv *RTCPhelper) CloseConectionByTag(Tag int, done chan bool) {
 	if err := serv.ConectionList.RemoveConnByConTag(Tag); err != nil {
 		c := serv.ConectionList.GetConnetionByTag(Tag).Connection
-		go serv.ErrHandler.CreateError(&c, Tag, err)
+		donem := make(chan bool)
+		go serv.ErrHandler.CreateError(&c, Tag, err, donem)
+		var d bool = false
+		d = <-donem
+		done <- d
 	}
+	done <- true
 	return
 }
 func GetErrOp(err error) net.OpError {
