@@ -1,0 +1,8 @@
+{
+"tcpport":":",
+"numconn":,
+"readbufsize":,
+"writebufsize":,
+"tcpwritetime":,
+"tcpreadtime":
+}

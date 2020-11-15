@@ -1,0 +1,11 @@
+Copy configfile.txt to you work directory
+
+"tcpport":"//listen tcp port for get data from another servers
+"numconn"://Max tcp connections to server
+"readbufsize"://size buffer for tcpread
+"writebufsize"://size buffer for tcpwrite,
+"tcpwritetime"://timeout for tcpwrite
+"tcpreadtime"://timeout for tcpread
+change Json fields
+
+Example 

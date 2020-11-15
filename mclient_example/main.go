@@ -45,6 +45,9 @@ func k() {
 	}
 }
 func main() {
+	var listenIp string
+	fmt.Print("Введите ip:port :")
+	fmt.Scanln(&listenIp)
 
 	go k()
 	TClient.SetErrorHandler(new(Errhandle))
@@ -52,7 +55,7 @@ func main() {
 	TClient.SetWriteDeadLine(60 * time.Second)
 	TClient.SetReadBufSize(500)
 	TClient.SetWriteBufSize(500)
-	if err := TClient.Start("127.0.0.1:1179", RHandler); err != nil {
+	if err := TClient.Start(listenIp, RHandler); err != nil {
 		fmt.Println(err)
 	}
 
